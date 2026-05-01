@@ -1,0 +1,280 @@
+diff --git a/CarCareTracker.csproj b/CarCareTracker.csproj
+index ecfa728..e6aed4a 100644
+--- a/CarCareTracker.csproj
++++ b/CarCareTracker.csproj
+@@ -12,6 +12,7 @@
+     <PackageReference Include="MailKit" Version="4.15.1" />
+     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.17.0" />
+     <PackageReference Include="Npgsql" Version="9.0.4" />
++    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="10.0.0" />
+   </ItemGroup>
+ 
+ </Project>
+diff --git a/Dockerfile b/Dockerfile
+index 7a85002..027203e 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,13 +1,28 @@
+ FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build-env
+ WORKDIR /App
+-
+ COPY . ./
+-ARG TARGETARCH
+-RUN dotnet restore -a $TARGETARCH
+-RUN dotnet publish -a $TARGETARCH -c Release -o out
++RUN dotnet restore -a amd64
++RUN dotnet publish -a amd64 -c Release -o out
+ 
+-FROM mcr.microsoft.com/dotnet/aspnet:10.0
++FROM ubuntu:24.04
+ WORKDIR /App
+ COPY --from=build-env /App/out .
++COPY run.sh /run.sh
++RUN apt-get update && apt-get install -y curl python3 nginx ca-certificates && \
++    curl -fsSL https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -o packages-microsoft-prod.deb && \
++    dpkg -i packages-microsoft-prod.deb && \
++    rm packages-microsoft-prod.deb && \
++    apt-get update && \
++    apt-get install -y aspnetcore-runtime-10.0 && \
++    rm -rf /var/lib/apt/lists/*
++RUN apt-get update && apt-get install -y openssl && \
++    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
++    -keyout /etc/nginx/ssl.key \
++    -out /etc/nginx/ssl.crt \
++    -subj "/CN=lubelogger"
++RUN ln -s /data /App/data && \
++    mkdir -p /root/.aspnet && \
++    ln -s /data/keys /root/.aspnet/DataProtection-Keys
++RUN chmod +x /run.sh
+ EXPOSE 8080
+-CMD ["./CarCareTracker"]
++CMD ["/run.sh"]
+diff --git a/Program.cs b/Program.cs
+index ac07925..c54171b 100644
+--- a/Program.cs
++++ b/Program.cs
+@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication;
+ using Microsoft.AspNetCore.Authorization;
+ using Microsoft.AspNetCore.Http.Features;
+ using Microsoft.AspNetCore.Server.Kestrel.Core;
++using Microsoft.AspNetCore.DataProtection;
+ using Microsoft.Extensions.FileProviders;
+ using System.Globalization;
+ 
+@@ -119,7 +120,6 @@ builder.Services.AddSignalR();
+ 
+ //configure Auth
+ builder.Services.AddHttpClient();
+-builder.Services.AddDataProtection();
+ builder.Services.AddHttpContextAccessor();
+ builder.Services.AddAuthentication("AuthN").AddScheme<AuthenticationSchemeOptions, Authen>("AuthN", opts => { });
+ builder.Services.AddAuthorization(options =>
+@@ -138,8 +138,22 @@ builder.Services.Configure<FormOptions>(options =>
+     options.MultipartHeadersLengthLimit = int.MaxValue;
+ });
+ 
++// Persist DataProtection keys to /data/keys
++builder.Services.AddDataProtection()
++    .PersistKeysToFileSystem(new DirectoryInfo("/data/keys"));
++
+ var app = builder.Build();
+ 
++app.Use(async (context, next) =>
++{
++    var ingressPath = context.Request.Headers["X-Ingress-Path"].FirstOrDefault();
++    if (!string.IsNullOrWhiteSpace(ingressPath))
++    {
++        context.Request.PathBase = new PathString(ingressPath);
++    }
++    await next();
++});
++
+ //configure the HTTP request pipeline.
+ app.UseExceptionHandler("/Home/Error");
+ 
+@@ -213,7 +227,6 @@ app.UseWhen(
+ );
+ 
+ app.UseRouting();
+-
+ app.UseAuthorization();
+ 
+ app.MapControllerRoute(
+diff --git a/Views/Shared/_Layout.cshtml b/Views/Shared/_Layout.cshtml
+index b2ecb7c..5abe1b1 100644
+--- a/Views/Shared/_Layout.cshtml
++++ b/Views/Shared/_Layout.cshtml
+@@ -29,6 +29,10 @@
+ }
+ <html lang="en" data-bs-theme="@(useDarkMode ? "dark" : "light")">
+ <head>
++    <base href="@(Context.Request.PathBase.HasValue ? Context.Request.PathBase.Value + "/" : "/")" />
++    <script>
++        window.BASE_URL = "@(Context.Request.PathBase.HasValue ? Context.Request.PathBase.Value : "")";
++    </script>
+     <meta charset="utf-8" />
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+     <meta name="apple-mobile-web-app-title" content="LubeLogger" />
+@@ -183,4 +187,4 @@
+     <script>
+         setThemeBasedOnDevice();
+     </script>
+-}
+\ No newline at end of file
++}
+diff --git a/wwwroot/js/garage.js b/wwwroot/js/garage.js
+index 719d17e..8d8cbf3 100644
+--- a/wwwroot/js/garage.js
++++ b/wwwroot/js/garage.js
+@@ -335,7 +335,7 @@ function viewVehicleWithTab(vehicleIds, tab) {
+         return;
+     }
+     let vehicleId = vehicleIds[0];
+-    window.location.href = `/Vehicle/Index?vehicleId=${vehicleId}&tab=${tab}`;
++    window.location.href = (window.BASE_URL || '') + `/Vehicle/Index?vehicleId=${vehicleId}&tab=${tab}`;
+ }
+ function handleGarageItemClick(e, vehicleId) {
+     if (!(event.ctrlKey || event.metaKey)) {
+@@ -845,5 +845,5 @@ $(function () {
+     });
+ })
+ function goToAdminPanel() {
+-    window.location.href = '/Admin';
++    window.location.href = (window.BASE_URL || '') + '/Admin';
+ }
+\ No newline at end of file
+diff --git a/wwwroot/js/login.js b/wwwroot/js/login.js
+index 56e08c0..c9b8b54 100644
+--- a/wwwroot/js/login.js
++++ b/wwwroot/js/login.js
+@@ -9,7 +9,7 @@
+             if (redirectURL.trim() != "") {
+                 window.location.href = redirectURL;
+             } else {
+-                window.location.href = '/Home';
++                window.location.href = (window.BASE_URL || '') + '/Home';
+             }
+         } else {
+             errorToast("Invalid Login Credentials, please try again.");
+@@ -24,7 +24,7 @@ function performRegistration() {
+     $.post('/Login/Register', { userName: userName, password: userPassword, token: token, emailAddress: userEmail }, function (data) {
+         if (data.success) {
+             successToast(data.message);
+-            setTimeout(function () { window.location.href = '/Login/Index' }, 500);
++            setTimeout(function () { window.location.href = (window.BASE_URL || '') + '/Login/Index' }, 500);
+         } else {
+             errorToast(data.message);
+         }
+@@ -35,7 +35,7 @@ function requestPasswordReset() {
+     $.post('/Login/RequestResetPassword', { userName: userName }, function (data) {
+         if (data.success) {
+             successToast(data.message);
+-            setTimeout(function () { window.location.href = '/Login/Index' }, 500);
++            setTimeout(function () { window.location.href = (window.BASE_URL || '') + '/Login/Index' }, 500);
+         } else {
+             errorToast(data.message);
+         }
+@@ -48,7 +48,7 @@ function performPasswordReset() {
+     $.post('/Login/PerformPasswordReset', { password: userPassword, token: token, emailAddress: userEmail }, function (data) {
+         if (data.success) {
+             successToast(data.message);
+-            setTimeout(function () { window.location.href = '/Login/Index' }, 500);
++            setTimeout(function () { window.location.href = (window.BASE_URL || '') + '/Login/Index' }, 500);
+         } else {
+             errorToast(data.message);
+         }
+diff --git a/wwwroot/js/settings.js b/wwwroot/js/settings.js
+index 80de9bf..90bdd8d 100644
+--- a/wwwroot/js/settings.js
++++ b/wwwroot/js/settings.js
+@@ -78,7 +78,7 @@ function updateSettings() {
+     $.post('/Home/WriteToSettings', { userConfig: userConfigObject }, function (data) {
+         sloader.hide();
+         if (data) {
+-            setTimeout(function () { window.location.href = '/Home/Index?tab=settings' }, 500);
++            setTimeout(function () { window.location.href = (window.BASE_URL || '') + '/Home/Index?tab=settings' }, 500);
+         } else {
+             errorToast(genericErrorMessage());
+         }
+@@ -109,7 +109,7 @@ function uploadLanguage(event) {
+     }).done((response) => {
+         sloader.hide();
+         if (response.success) {
+-            setTimeout(function () { window.location.href = '/Home/Index?tab=settings' }, 500);
++            setTimeout(function () { window.location.href = (window.BASE_URL || '') + '/Home/Index?tab=settings' }, 500);
+         } else {
+             errorToast(response.message);
+         }
+@@ -137,7 +137,7 @@ function restoreBackup(event) {
+                 if (data) {
+                     console.log('LubeLogger - DB Restoration Completed');
+                     successToast("Backup Restored");
+-                    setTimeout(function () { window.location.href = '/Home/Index' }, 500);
++                    setTimeout(function () { window.location.href = (window.BASE_URL || '') + '/Home/Index' }, 500);
+                 } else {
+                     errorToast(genericErrorMessage());
+                     console.log('LubeLogger - DB Restoration Failed - Failed to process backup file.');
+@@ -185,7 +185,7 @@ function createAndUploadTranslation(translationName, translationData) {
+     }).done((response) => {
+         sloader.hide();
+         if (response.success) {
+-            setTimeout(function () { window.location.href = '/Home/Index?tab=settings' }, 500);
++            setTimeout(function () { window.location.href = (window.BASE_URL || '') + '/Home/Index?tab=settings' }, 500);
+         } else {
+             errorToast(response.message);
+         }
+diff --git a/wwwroot/js/shared.js b/wwwroot/js/shared.js
+index fed45d6..0b1d6d0 100644
+--- a/wwwroot/js/shared.js
++++ b/wwwroot/js/shared.js
+@@ -1,4 +1,11 @@
+-﻿$.expr.pseudos.containsNC = $.expr.createPseudo(function (arg) {
++﻿$(document).ready(function() {
++    $.ajaxPrefilter(function(options) {
++        if (options.url && options.url.startsWith('/') && window.BASE_URL) {
++            options.url = window.BASE_URL + options.url;
++        }
++    });
++});
++$.expr.pseudos.containsNC = $.expr.createPseudo(function (arg) {
+     return function (elem) {
+         return $(elem).text().toUpperCase().indexOf(arg.toUpperCase()) >= 0;
+     };
+@@ -6,7 +13,7 @@
+ const mobileScreen = window.matchMedia("(max-width: 576px)");
+ var eventHubConn = undefined;
+ function returnToGarage() {
+-    window.location.href = '/Home';
++    window.location.href = (window.BASE_URL || '') + '/Home';
+ }
+ function confirmDelete(message, callBack) {
+     Swal.fire({
+@@ -80,7 +87,7 @@ function warnToast(message) {
+     })
+ }
+ function viewVehicle(vehicleId) {
+-    window.location.href = `/Vehicle/Index?vehicleId=${vehicleId}`;
++    window.location.href = (window.BASE_URL || '') + `/Vehicle/Index?vehicleId=${vehicleId}`;
+ }
+ function saveVehicle(isEdit) {
+     var vehicleId = getVehicleModelData().id;
+@@ -2237,4 +2244,4 @@ function downloadQR() {
+         downloadLink.click();
+         URL.revokeObjectURL(url);
+     };
+-}
+\ No newline at end of file
++}
+diff --git a/wwwroot/js/vehicle.js b/wwwroot/js/vehicle.js
+index 2271e38..5f09f69 100644
+--- a/wwwroot/js/vehicle.js
++++ b/wwwroot/js/vehicle.js
+@@ -235,7 +235,7 @@ function deleteVehicle(vehicleId) {
+         if (result.isConfirmed) {
+             $.post('/Vehicle/DeleteVehicle', { vehicleId: vehicleId }, function (data) {
+                 if (data.success) {
+-                    window.location.href = '/Home';
++                    window.location.href = (window.BASE_URL || '') + '/Home';
+                 } else {
+                     errorToast(data.message);
+                 }
