@@ -17,9 +17,3 @@ Or manually go to **Settings** - **Add-ons** - **Add-on Store** - three-dot menu
 Self-hosted, open-source, web-based vehicle maintenance and fuel mileage tracker.
 
 Built on [LubeLogger by Hargata Softworks](https://lubelogger.com).
-
-## Notes
-
-- Data persists across restarts and rebuilds via the HAOS backup system
-- Port 8080 is accessible on your local network in addition to ingress
-- No first-time setup required - just install and open the Web UI
