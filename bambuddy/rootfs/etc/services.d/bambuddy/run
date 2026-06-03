@@ -85,7 +85,7 @@ fi
 
 # Auto-discover MQTT from supervisor if no user overrides were set
 if bashio::services.available 'mqtt'; then
-  if [ -z "${MQTT_BROKER}" ]; then
+  if [ -z "${MQTT_BROKER:-}" ]; then
     bashio::log.info "Auto-discovering MQTT credentials from Home Assistant Supervisor..."
     export MQTT_ENABLED="true"
     export MQTT_BROKER=$(bashio::services mqtt "host")
