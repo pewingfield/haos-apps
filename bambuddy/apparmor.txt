@@ -1,0 +1,14 @@
+#include <tunables/global>
+
+profile bambuddy flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  capability,
+  file,
+  signal,
+  network,
+
+  /app/** rmix,
+  /share/bambuddy/** rwix,
+  /media/** r,
+}
