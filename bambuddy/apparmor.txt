@@ -5,10 +5,16 @@ profile bambuddy flags=(attach_disconnected,mediate_deleted) {
 
   capability,
   file,
-  signal,
+  signal (send) set=(kill,term,int,hup,cont),
   network,
 
+  /usr/bin/bashio ix,
+  /usr/bin/with-contenv ix,
+  /bin/bash ix,
+  /bin/sh ix,
   /app/** rmix,
   /share/bambuddy/** rwix,
   /media/** r,
+  /run/s6/** rwix,
+  /etc/s6/** rx,
 }
