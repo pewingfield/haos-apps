@@ -1,82 +1,40 @@
 diff --git a/CarCareTracker.csproj b/CarCareTracker.csproj
-index ecfa728..e6aed4a 100644
+index 901e621..5920066 100644
 --- a/CarCareTracker.csproj
 +++ b/CarCareTracker.csproj
-@@ -12,6 +12,7 @@
-     <PackageReference Include="MailKit" Version="4.15.1" />
-     <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.17.0" />
-     <PackageReference Include="Npgsql" Version="9.0.4" />
+@@ -7,6 +7,7 @@
+   </PropertyGroup>
+ 
+   <ItemGroup>
 +    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="10.0.0" />
-   </ItemGroup>
- 
- </Project>
-diff --git a/Dockerfile b/Dockerfile
-index 7a85002..027203e 100644
---- a/Dockerfile
-+++ b/Dockerfile
-@@ -1,13 +1,28 @@
- FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build-env
- WORKDIR /App
--
- COPY . ./
--ARG TARGETARCH
--RUN dotnet restore -a $TARGETARCH
--RUN dotnet publish -a $TARGETARCH -c Release -o out
-+RUN dotnet restore -a amd64
-+RUN dotnet publish -a amd64 -c Release -o out
- 
--FROM mcr.microsoft.com/dotnet/aspnet:10.0
-+FROM ubuntu:24.04
- WORKDIR /App
- COPY --from=build-env /App/out .
-+COPY run.sh /run.sh
-+RUN apt-get update && apt-get install -y curl python3 nginx ca-certificates && \
-+    curl -fsSL https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -o packages-microsoft-prod.deb && \
-+    dpkg -i packages-microsoft-prod.deb && \
-+    rm packages-microsoft-prod.deb && \
-+    apt-get update && \
-+    apt-get install -y aspnetcore-runtime-10.0 && \
-+    rm -rf /var/lib/apt/lists/*
-+RUN apt-get update && apt-get install -y openssl && \
-+    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-+    -keyout /etc/nginx/ssl.key \
-+    -out /etc/nginx/ssl.crt \
-+    -subj "/CN=lubelogger"
-+RUN ln -s /data /App/data && \
-+    mkdir -p /root/.aspnet && \
-+    ln -s /data/keys /root/.aspnet/DataProtection-Keys
-+RUN chmod +x /run.sh
- EXPOSE 8080
--CMD ["./CarCareTracker"]
-+CMD ["/run.sh"]
+     <PackageReference Include="CsvHelper" Version="33.1.0" />
+     <PackageReference Include="LiteDB" Version="5.0.17" />
+     <PackageReference Include="MailKit" Version="4.17.0" />
 diff --git a/Program.cs b/Program.cs
-index ac07925..c54171b 100644
+index 1413f51..535a255 100644
 --- a/Program.cs
 +++ b/Program.cs
-@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication;
+@@ -5,6 +5,7 @@ using CarCareTracker.Logic;
+ using CarCareTracker.Middleware;
+ using Microsoft.AspNetCore.Authentication;
  using Microsoft.AspNetCore.Authorization;
++using Microsoft.AspNetCore.DataProtection;
  using Microsoft.AspNetCore.Http.Features;
  using Microsoft.AspNetCore.Server.Kestrel.Core;
-+using Microsoft.AspNetCore.DataProtection;
  using Microsoft.Extensions.FileProviders;
- using System.Globalization;
- 
-@@ -119,7 +120,6 @@ builder.Services.AddSignalR();
+@@ -123,7 +124,9 @@ builder.Services.AddSignalR();
  
  //configure Auth
  builder.Services.AddHttpClient();
 -builder.Services.AddDataProtection();
- builder.Services.AddHttpContextAccessor();
- builder.Services.AddAuthentication("AuthN").AddScheme<AuthenticationSchemeOptions, Authen>("AuthN", opts => { });
- builder.Services.AddAuthorization(options =>
-@@ -138,8 +138,22 @@ builder.Services.Configure<FormOptions>(options =>
-     options.MultipartHeadersLengthLimit = int.MaxValue;
- });
- 
 +// Persist DataProtection keys to /data/keys
 +builder.Services.AddDataProtection()
 +    .PersistKeysToFileSystem(new DirectoryInfo("/data/keys"));
-+
+ builder.Services.AddHttpContextAccessor();
+ builder.Services.AddAuthentication("AuthN").AddScheme<AuthenticationSchemeOptions, Authen>("AuthN", opts => { });
+ builder.Services.AddAuthorization(options =>
+@@ -144,6 +147,16 @@ builder.Services.Configure<FormOptions>(options =>
+ 
  var app = builder.Build();
  
 +app.Use(async (context, next) =>
@@ -92,19 +50,11 @@ index ac07925..c54171b 100644
  //configure the HTTP request pipeline.
  app.UseExceptionHandler("/Home/Error");
  
-@@ -213,7 +227,6 @@ app.UseWhen(
- );
- 
- app.UseRouting();
--
- app.UseAuthorization();
- 
- app.MapControllerRoute(
 diff --git a/Views/Shared/_Layout.cshtml b/Views/Shared/_Layout.cshtml
-index b2ecb7c..5abe1b1 100644
+index 08ab26b..82807f1 100644
 --- a/Views/Shared/_Layout.cshtml
 +++ b/Views/Shared/_Layout.cshtml
-@@ -29,6 +29,10 @@
+@@ -30,6 +30,10 @@
  }
  <html lang="en" data-bs-theme="@(useDarkMode ? "dark" : "light")">
  <head>
@@ -115,7 +65,7 @@ index b2ecb7c..5abe1b1 100644
      <meta charset="utf-8" />
      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
      <meta name="apple-mobile-web-app-title" content="LubeLogger" />
-@@ -183,4 +187,4 @@
+@@ -185,4 +189,4 @@
      <script>
          setThemeBasedOnDevice();
      </script>
@@ -123,28 +73,20 @@ index b2ecb7c..5abe1b1 100644
 \ No newline at end of file
 +}
 diff --git a/wwwroot/js/garage.js b/wwwroot/js/garage.js
-index 719d17e..8d8cbf3 100644
+index fe244f9..b27276e 100644
 --- a/wwwroot/js/garage.js
 +++ b/wwwroot/js/garage.js
-@@ -335,7 +335,7 @@ function viewVehicleWithTab(vehicleIds, tab) {
-         return;
-     }
-     let vehicleId = vehicleIds[0];
--    window.location.href = `/Vehicle/Index?vehicleId=${vehicleId}&tab=${tab}`;
-+    window.location.href = (window.BASE_URL || '') + `/Vehicle/Index?vehicleId=${vehicleId}&tab=${tab}`;
- }
- function handleGarageItemClick(e, vehicleId) {
-     if (!(event.ctrlKey || event.metaKey)) {
 @@ -845,5 +845,5 @@ $(function () {
      });
  })
  function goToAdminPanel() {
 -    window.location.href = '/Admin';
-+    window.location.href = (window.BASE_URL || '') + '/Admin';
- }
+-}
 \ No newline at end of file
++    window.location.href = (window.BASE_URL || '') + '/Admin';
++}
 diff --git a/wwwroot/js/login.js b/wwwroot/js/login.js
-index 56e08c0..c9b8b54 100644
+index 56e08c0..5a53107 100644
 --- a/wwwroot/js/login.js
 +++ b/wwwroot/js/login.js
 @@ -9,7 +9,7 @@
@@ -183,8 +125,15 @@ index 56e08c0..c9b8b54 100644
          } else {
              errorToast(data.message);
          }
+@@ -93,4 +93,4 @@ function sendRegistrationToken() {
+             });
+         }
+     });
+-}
+\ No newline at end of file
++}
 diff --git a/wwwroot/js/settings.js b/wwwroot/js/settings.js
-index 80de9bf..90bdd8d 100644
+index 80de9bf..29caf15 100644
 --- a/wwwroot/js/settings.js
 +++ b/wwwroot/js/settings.js
 @@ -78,7 +78,7 @@ function updateSettings() {
@@ -223,8 +172,15 @@ index 80de9bf..90bdd8d 100644
          } else {
              errorToast(response.message);
          }
+@@ -477,4 +477,4 @@ function loadTooltips() {
+         event.stopPropagation();
+         event.preventDefault();
+     })
+-}
+\ No newline at end of file
++}
 diff --git a/wwwroot/js/shared.js b/wwwroot/js/shared.js
-index fed45d6..0b1d6d0 100644
+index 32b8bfd..edd3eed 100644
 --- a/wwwroot/js/shared.js
 +++ b/wwwroot/js/shared.js
 @@ -1,4 +1,11 @@
@@ -241,7 +197,7 @@ index fed45d6..0b1d6d0 100644
          return $(elem).text().toUpperCase().indexOf(arg.toUpperCase()) >= 0;
      };
 @@ -6,7 +13,7 @@
- const mobileScreen = window.matchMedia("(max-width: 576px)");
+ const mobileScreen = window.matchMedia("(max-width: 575px)");
  var eventHubConn = undefined;
  function returnToGarage() {
 -    window.location.href = '/Home';
@@ -249,16 +205,19 @@ index fed45d6..0b1d6d0 100644
  }
  function confirmDelete(message, callBack) {
      Swal.fire({
-@@ -80,7 +87,7 @@ function warnToast(message) {
-     })
+@@ -81,9 +88,9 @@ function warnToast(message) {
  }
- function viewVehicle(vehicleId) {
--    window.location.href = `/Vehicle/Index?vehicleId=${vehicleId}`;
-+    window.location.href = (window.BASE_URL || '') + `/Vehicle/Index?vehicleId=${vehicleId}`;
+ function viewVehicle(vehicleId, tab) {
+     if (tab != undefined) {
+-        window.location.href = `/Vehicle/Index?vehicleId=${vehicleId}&tab=${tab}`;
++        window.location.href = (window.BASE_URL || '') + `/Vehicle/Index?vehicleId=${vehicleId}&tab=${tab}`;
+     } else {
+-        window.location.href = `/Vehicle/Index?vehicleId=${vehicleId}`;
++        window.location.href = (window.BASE_URL || '') + `/Vehicle/Index?vehicleId=${vehicleId}`;
+     }
  }
  function saveVehicle(isEdit) {
-     var vehicleId = getVehicleModelData().id;
-@@ -2237,4 +2244,4 @@ function downloadQR() {
+@@ -2299,4 +2306,4 @@ function downloadQR() {
          downloadLink.click();
          URL.revokeObjectURL(url);
      };
@@ -266,7 +225,7 @@ index fed45d6..0b1d6d0 100644
 \ No newline at end of file
 +}
 diff --git a/wwwroot/js/vehicle.js b/wwwroot/js/vehicle.js
-index 2271e38..5f09f69 100644
+index 30e8dcd..e7e3b49 100644
 --- a/wwwroot/js/vehicle.js
 +++ b/wwwroot/js/vehicle.js
 @@ -235,7 +235,7 @@ function deleteVehicle(vehicleId) {
@@ -278,3 +237,10 @@ index 2271e38..5f09f69 100644
                  } else {
                      errorToast(data.message);
                  }
+@@ -897,4 +897,4 @@ function setLastOdometer(mileageInputId) {
+         }
+         $(`#${mileageInputId}`).val(data);
+     });
+-}
+\ No newline at end of file
++}
