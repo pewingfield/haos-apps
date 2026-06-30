@@ -1,9 +1,10 @@
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build-env
 WORKDIR /App
 ARG CACHE_BUST=1.6.8
-RUN apt-get update && apt-get install -y git && \
+RUN apt-get update && apt-get install -y git jq && \
     git clone --branch v1.6.8 --depth 1 https://github.com/hargata/lubelog.git . && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN jq 'del(.Kestrel)' appsettings.json > appsettings.tmp && mv appsettings.tmp appsettings.json
 COPY haos.patch .
 RUN git apply haos.patch
 RUN dotnet restore -a amd64
