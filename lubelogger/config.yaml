@@ -1,6 +1,6 @@
 name: LubeLogger
 description: Self-hosted, open-source, web-based vehicle maintenance and fuel mileage tracker
-version: 1.6.4
+version: 1.6.8
 slug: lubelogger
 startup: application
 boot: auto
