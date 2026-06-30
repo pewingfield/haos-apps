@@ -1,8 +1,8 @@
 # LubeLogger for Home Assistant OS
 
-Self-hosted, open-source, web-based vehicle maintenance and fuel mileage tracker, packaged as a Home Assistant OS add-on.
+Self-hosted, open-source, web-based vehicle maintenance and fuel mileage tracker, packaged as a Home Assistant OS app.
 
-[![Open your Home Assistant instance and show the dashboard of an add-on.](https://my.home-assistant.io/badges/supervisor_addon.svg)](https://my.home-assistant.io/redirect/supervisor_addon/?addon=lubelogger&repository_url=https%3A%2F%2Fgithub.com%2Fpewingfield%2Fhaos-apps)
+[![Open your Home Assistant instance and show the dashboard of an app.](https://my.home-assistant.io/badges/supervisor_addon.svg)](https://my.home-assistant.io/redirect/supervisor_addon/?addon=lubelogger&repository_url=https%3A%2F%2Fgithub.com%2Fpewingfield%2Fhaos-apps)
 
 ## Features
 
@@ -17,9 +17,9 @@ Self-hosted, open-source, web-based vehicle maintenance and fuel mileage tracker
 
 1. Add the HAOS Apps repository to your Home Assistant instance:
 
-[![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fpewingfield%2Fhaos-apps)
+[![Open your Home Assistant instance and show the add app repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fpewingfield%2Fhaos-apps)
 
-2. Find LubeLogger in the add-on store under **HAOS Apps**
+2. Find LubeLogger in the app store under **HAOS Apps**
 3. Click **Install**
 4. Click **Start**
 5. Click **Open Web UI**
@@ -30,7 +30,7 @@ Self-hosted, open-source, web-based vehicle maintenance and fuel mileage tracker
 - Data is stored in the HAOS addon data directory and included in HAOS backups
 - LubeLogger also has a built-in backup feature that downloads to your local computer
 - First build takes several minutes as it compiles LubeLogger from source
-- After enabling authentication in LubeLogger settings, the add-on must be restarted before login credentials will be accepted
+- After enabling authentication in LubeLogger settings, the app must be restarted before login credentials will be accepted
 
 ## Credits
 
