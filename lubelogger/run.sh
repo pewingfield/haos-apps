@@ -70,6 +70,10 @@ mkdir -p /data/keys
 export LUBELOGGER_USERDATA_DIRECTORY=/data/
 export ASPNETCORE_URLS=http://+:8081
 
+export ASPNETCORE_URLS=http://+:8081
+export ASPNETCORE_HTTP_PORTS=8081
+export ASPNETCORE_HTTPS_PORTS=""
+
 # Start dotnet in background
 dotnet /App/CarCareTracker.dll &
 
