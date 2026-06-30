@@ -4,8 +4,9 @@ ARG CACHE_BUST=1.6.8
 RUN apt-get update && apt-get install -y git jq && \
     git clone --branch v1.6.8 --depth 1 https://github.com/hargata/lubelog.git . && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
-RUN cat appsettings.json
-RUN jq 'del(.Kestrel)' appsettings.json > appsettings.tmp && mv appsettings.tmp appsettings.json
+RUN ls -la *.json
+RUN jq 'del(.Kestrel)' appsettings.json > appsettings.tmp && mv appsettings.tmp appsettings.json && \
+    if [ -f appsettings.Production.json ]; then jq 'del(.Kestrel)' appsettings.Production.json > appsettings.tmp && mv appsettings.tmp appsettings.Production.json; fi
 RUN cat appsettings.json
 COPY haos.patch .
 RUN git apply haos.patch
