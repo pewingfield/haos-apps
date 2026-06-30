@@ -1,7 +1,7 @@
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build-env
 WORKDIR /App
 RUN apt-get update && apt-get install -y git && \
-    git clone https://github.com/hargata/lubelog.git . && \
+    git clone --branch v1.6.8 --depth 1 https://github.com/hargata/lubelog.git . && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 COPY haos.patch .
 RUN git apply haos.patch
