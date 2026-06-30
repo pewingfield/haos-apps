@@ -39,7 +39,7 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
     server {
-        listen 0.0.0.0:8080;
+        listen 0.0.0.0:8580;
         location = / {
             return 301 ${INGRESS_ENTRY}/;
         }
