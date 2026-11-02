@@ -1,5 +1,7 @@
 # HAOS Apps
 
+> **Status:** LubeLogger and Bambuddy have since moved off Home Assistant and now run as standard Docker containers elsewhere. This repo remains as a reference for how the HAOS App packaging (ingress, persistent storage, Supervisor integration) was done, and may host future HAOS App packaging work.
+
 A collection of Home Assistant OS apps by pewingfield.
 
 Each app here is packaged to run as a native Home Assistant OS App, with ingress, persistent storage, and supervisor integration handled, so it installs and behaves like any official app from the App Store rather than a bolted-on container.
